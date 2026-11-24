@@ -1,0 +1,2226 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIK-DESA - Sistem Informasi Kependudukan Desa</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- SheetJS (XLSX) -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f1f5f9;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        /* Styling Khusus Dokumen Kartu Keluarga (Sesuai Format Resmi A4 Landscape) */
+        .kk-paper-wrapper {
+            overflow-x: auto;
+            padding: 1rem;
+            background: #e2e8f0;
+            border-radius: 0.75rem;
+        }
+
+        .kk-document {
+            width: 297mm;
+            min-height: 210mm;
+            background: #ffffff;
+            color: #000000;
+            font-family: Arial, Helvetica, sans-serif;
+            padding: 8mm 10mm;
+            margin: 0 auto;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15);
+            box-sizing: border-box;
+            position: relative;
+        }
+
+        .kk-title {
+            font-size: 20pt;
+            font-weight: 800;
+            letter-spacing: 1.5px;
+            line-height: 1.1;
+        }
+
+        .kk-number {
+            font-size: 13pt;
+            font-weight: 700;
+            letter-spacing: 2px;
+            margin-top: 2px;
+        }
+
+        .kk-meta-table td {
+            font-size: 7.5pt;
+            padding: 1px 3px;
+            vertical-align: top;
+            line-height: 1.25;
+        }
+
+        .kk-grid-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 5px;
+            table-layout: fixed;
+        }
+
+        .kk-grid-table th, .kk-grid-table td {
+            border: 1px solid #000000;
+            font-size: 6.5pt;
+            padding: 2px 3px;
+            line-height: 1.15;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+
+        .kk-grid-table th {
+            text-align: center;
+            font-weight: 600;
+            background-color: #ffffff;
+        }
+
+        .kk-col-num th {
+            font-size: 6pt;
+            padding: 1px;
+            font-weight: 700;
+        }
+
+        .kk-grid-table td {
+            height: 15.5px;
+            text-transform: uppercase;
+        }
+
+        /* Print Media Query untuk Cetak KK */
+        @media print {
+            @page {
+                size: A4 landscape;
+                margin: 0;
+            }
+            body * {
+                visibility: hidden;
+            }
+            #kk-print-area, #kk-print-area * {
+                visibility: visible;
+            }
+            #kk-print-area {
+                position: fixed;
+                left: 0;
+                top: 0;
+                width: 297mm;
+                height: 210mm;
+                margin: 0;
+                padding: 7mm 9mm;
+                box-shadow: none;
+                z-index: 99999;
+                background: #ffffff !important;
+            }
+            .no-print {
+                display: none !important;
+            }
+        }
+    </style>
+</head>
+<body class="text-slate-800 antialiased">
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none"></div>
+
+    <!-- Main Layout -->
+    <div class="flex h-screen overflow-hidden">
+        
+        <!-- Mobile Sidebar Backdrop -->
+        <div id="sidebar-backdrop" onclick="toggleSidebar()" class="fixed inset-0 bg-slate-900/50 z-20 hidden lg:hidden"></div>
+
+        <!-- Sidebar -->
+        <aside id="sidebar" class="fixed lg:static inset-y-0 left-0 z-30 w-64 bg-slate-900 text-white transform -translate-x-full lg:translate-x-0 transition-transform duration-200 ease-in-out flex flex-col">
+            <!-- Brand Header -->
+            <div class="flex items-center gap-3 px-6 py-5 border-b border-slate-800">
+                <div class="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-emerald-600/30">
+                    <i class="fa-solid fa-landmark"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-base tracking-wide text-white">SIK-DESA</h1>
+                    <p id="sidebar-desa-name" class="text-xs text-slate-400 truncate max-w-[140px]">Desa Tebing Tinggi</p>
+                </div>
+            </div>
+
+            <!-- Navigation Menu -->
+            <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+                <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium bg-emerald-600 text-white transition-all">
+                    <i class="fa-solid fa-chart-pie w-5 text-center"></i>
+                    <span>Dashboard & Rekap</span>
+                </button>
+                <button onclick="switchTab('penduduk')" id="nav-penduduk" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all">
+                    <i class="fa-solid fa-users w-5 text-center"></i>
+                    <span>Data Penduduk</span>
+                </button>
+                <button onclick="switchTab('mutasi')" id="nav-mutasi" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all">
+                    <i class="fa-solid fa-right-left w-5 text-center"></i>
+                    <span>Mutasi Penduduk</span>
+                </button>
+                <button onclick="switchTab('cetak-kk')" id="nav-cetak-kk" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all">
+                    <i class="fa-solid fa-address-card w-5 text-center"></i>
+                    <span>Cetak Kartu Keluarga</span>
+                </button>
+                <button onclick="switchTab('import')" id="nav-import" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all">
+                    <i class="fa-solid fa-file-excel w-5 text-center"></i>
+                    <span>Import Data SIAK</span>
+                </button>
+                <button onclick="switchTab('pengaturan')" id="nav-pengaturan" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all">
+                    <i class="fa-solid fa-gear w-5 text-center"></i>
+                    <span>Pengaturan Desa & Logo</span>
+                </button>
+            </nav>
+
+            <!-- Footer Info -->
+            <div class="p-4 border-t border-slate-800 text-xs text-slate-400">
+                <div class="flex items-center justify-between mb-2">
+                    <span>Penyimpanan Lokal</span>
+                    <span class="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-full font-medium">Aktif</span>
+                </div>
+                <button onclick="openResetConfirm()" class="w-full py-1.5 px-3 bg-slate-800 hover:bg-rose-950 hover:text-rose-300 text-slate-300 rounded-lg transition text-center">
+                    <i class="fa-solid fa-rotate-left mr-1"></i> Reset Data Default
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <div class="flex-1 flex flex-col overflow-hidden">
+            <!-- Top Header -->
+            <header class="bg-white border-b border-slate-200 px-4 lg:px-8 py-3.5 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <button onclick="toggleSidebar()" class="lg:hidden p-2 rounded-lg text-slate-600 hover:bg-slate-100">
+                        <i class="fa-solid fa-bars text-lg"></i>
+                    </button>
+                    <div>
+                        <h2 id="page-title" class="text-lg font-bold text-slate-800">Dashboard & Rekapitulasi</h2>
+                        <p id="page-subtitle" class="text-xs text-slate-500 hidden sm:block">Ringkasan statistik kependudukan desa terkini</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="hidden md:flex items-center gap-2 text-xs bg-slate-100 px-3 py-1.5 rounded-full text-slate-600 font-medium">
+                        <i class="fa-regular fa-calendar text-emerald-600"></i>
+                        <span id="current-date-display"></span>
+                    </div>
+                    <button onclick="switchTab('cetak-kk')" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-sm transition flex items-center gap-2">
+                        <i class="fa-solid fa-print"></i>
+                        <span class="hidden sm:inline">Cetak KK</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Content Scrollable -->
+            <main class="flex-1 overflow-y-auto p-4 lg:p-8 space-y-6">
+
+                <!-- ==================== TAB 1: DASHBOARD & REKAPITULASI ==================== -->
+                <section id="tab-dashboard" class="tab-content space-y-6">
+                    <!-- Action Bar -->
+                    <div class="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                        <div>
+                            <h3 class="font-semibold text-slate-800">Statistik Kependudukan Aktif</h3>
+                            <p class="text-xs text-slate-500">Data otomatis diperbarui berdasarkan mutasi kelahiran, pindah, dan kematian.</p>
+                        </div>
+                        <button onclick="exportRekapExcel()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-xl shadow-sm transition flex items-center gap-2">
+                            <i class="fa-solid fa-file-excel"></i> Export Rekapitulasi (.xlsx)
+                        </button>
+                    </div>
+
+                    <!-- Summary Cards -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+                            <div class="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-xl">
+                                <i class="fa-solid fa-users"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs font-medium text-slate-500 uppercase">Total Penduduk Aktif</p>
+                                <h4 id="stat-total-penduduk" class="text-2xl font-bold text-slate-800 mt-0.5">0</h4>
+                                <p class="text-[11px] text-slate-400">Jiwa terdaftar aktif</p>
+                            </div>
+                        </div>
+
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+                            <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl">
+                                <i class="fa-solid fa-house-user"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs font-medium text-slate-500 uppercase">Kepala Keluarga (KK)</p>
+                                <h4 id="stat-total-kk" class="text-2xl font-bold text-slate-800 mt-0.5">0</h4>
+                                <p class="text-[11px] text-slate-400">Keluarga aktif</p>
+                            </div>
+                        </div>
+
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+                            <div class="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl">
+                                <i class="fa-solid fa-mars"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs font-medium text-slate-500 uppercase">Laki-Laki</p>
+                                <h4 id="stat-laki" class="text-2xl font-bold text-slate-800 mt-0.5">0</h4>
+                                <p id="stat-laki-pct" class="text-[11px] text-indigo-600 font-medium">0%</p>
+                            </div>
+                        </div>
+
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+                            <div class="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-xl">
+                                <i class="fa-solid fa-venus"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs font-medium text-slate-500 uppercase">Perempuan</p>
+                                <h4 id="stat-perempuan" class="text-2xl font-bold text-slate-800 mt-0.5">0</h4>
+                                <p id="stat-perempuan-pct" class="text-[11px] text-rose-600 font-medium">0%</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Charts Grid -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <!-- Chart Jenis Kelamin -->
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                            <h4 class="font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                                <i class="fa-solid fa-venus-mars text-emerald-600"></i> Rekap Berdasarkan Jenis Kelamin
+                            </h4>
+                            <div class="h-64 flex items-center justify-center">
+                                <canvas id="chartGender"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Chart Kelompok Umur -->
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                            <h4 class="font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                                <i class="fa-solid fa-cake-candles text-blue-600"></i> Rekap Berdasarkan Kelompok Umur
+                            </h4>
+                            <div class="h-64">
+                                <canvas id="chartAge"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Chart Pendidikan -->
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                            <h4 class="font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                                <i class="fa-solid fa-graduation-cap text-amber-600"></i> Rekap Tingkat Pendidikan
+                            </h4>
+                            <div class="h-64">
+                                <canvas id="chartEducation"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Chart Pekerjaan -->
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                            <h4 class="font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                                <i class="fa-solid fa-briefcase text-purple-600"></i> Rekap Jenis Pekerjaan
+                            </h4>
+                            <div class="h-64">
+                                <canvas id="chartOccupation"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Detailed Recap Tables -->
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <!-- Tabel Umur -->
+                        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                            <div class="px-5 py-3.5 bg-slate-50 border-b border-slate-200 font-semibold text-sm text-slate-700">
+                                Rincian Kelompok Umur
+                            </div>
+                            <table class="w-full text-sm text-left">
+                                <thead class="text-xs text-slate-500 uppercase bg-slate-50/50 border-b">
+                                    <tr>
+                                        <th class="px-4 py-2.5">Kategori Umur</th>
+                                        <th class="px-4 py-2.5 text-right">L</th>
+                                        <th class="px-4 py-2.5 text-right">P</th>
+                                        <th class="px-4 py-2.5 text-right">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="table-rekap-umur" class="divide-y divide-slate-100"></tbody>
+                            </table>
+                        </div>
+
+                        <!-- Tabel Pendidikan -->
+                        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                            <div class="px-5 py-3.5 bg-slate-50 border-b border-slate-200 font-semibold text-sm text-slate-700">
+                                Rincian Pendidikan
+                            </div>
+                            <table class="w-full text-sm text-left">
+                                <thead class="text-xs text-slate-500 uppercase bg-slate-50/50 border-b">
+                                    <tr>
+                                        <th class="px-4 py-2.5">Pendidikan</th>
+                                        <th class="px-4 py-2.5 text-right">Jumlah</th>
+                                        <th class="px-4 py-2.5 text-right">%</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="table-rekap-pendidikan" class="divide-y divide-slate-100"></tbody>
+                            </table>
+                        </div>
+
+                        <!-- Tabel Pekerjaan -->
+                        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                            <div class="px-5 py-3.5 bg-slate-50 border-b border-slate-200 font-semibold text-sm text-slate-700">
+                                Rincian Pekerjaan
+                            </div>
+                            <table class="w-full text-sm text-left">
+                                <thead class="text-xs text-slate-500 uppercase bg-slate-50/50 border-b">
+                                    <tr>
+                                        <th class="px-4 py-2.5">Jenis Pekerjaan</th>
+                                        <th class="px-4 py-2.5 text-right">Jumlah</th>
+                                        <th class="px-4 py-2.5 text-right">%</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="table-rekap-pekerjaan" class="divide-y divide-slate-100"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ==================== TAB 2: DATA PENDUDUK ==================== -->
+                <section id="tab-penduduk" class="tab-content hidden space-y-5">
+                    <!-- Filter & Action Toolbar -->
+                    <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <div class="relative flex-1 min-w-[240px]">
+                                <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                                <input type="text" id="search-penduduk" oninput="renderPendudukTable()" placeholder="Cari NIK, Nama Lengkap, atau Nomor KK..." class="w-full pl-10 pr-4 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <select id="filter-status" onchange="renderPendudukTable()" class="px-3 py-2 text-sm border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 outline-none">
+                                    <option value="AKTIF">Status: Aktif</option>
+                                    <option value="ALL">Semua Status</option>
+                                    <option value="PINDAH">Status: Pindah</option>
+                                    <option value="MENINGGAL">Status: Meninggal</option>
+                                </select>
+                                <select id="filter-rtrw" onchange="renderPendudukTable()" class="px-3 py-2 text-sm border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 outline-none">
+                                    <option value="ALL">Semua RT/RW</option>
+                                </select>
+                                <button onclick="openAddPendudukModal()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-xl shadow-sm transition flex items-center gap-2">
+                                    <i class="fa-solid fa-user-plus"></i> Tambah Penduduk
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Table Data Penduduk -->
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm text-left">
+                                <thead class="text-xs text-slate-600 uppercase bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th class="px-4 py-3.5">No</th>
+                                        <th class="px-4 py-3.5">NIK / No. KK</th>
+                                        <th class="px-4 py-3.5">Nama Lengkap</th>
+                                        <th class="px-4 py-3.5">L/P & Umur</th>
+                                        <th class="px-4 py-3.5">Hubungan</th>
+                                        <th class="px-4 py-3.5">Alamat (RT/RW)</th>
+                                        <th class="px-4 py-3.5">Status</th>
+                                        <th class="px-4 py-3.5 text-center">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="penduduk-table-body" class="divide-y divide-slate-100"></tbody>
+                            </table>
+                        </div>
+                        <div id="penduduk-empty-state" class="hidden py-12 text-center text-slate-400">
+                            <i class="fa-regular fa-folder-open text-4xl mb-2"></i>
+                            <p class="text-sm">Tidak ada data penduduk yang sesuai dengan pencarian.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ==================== TAB 3: MUTASI PENDUDUK ==================== -->
+                <section id="tab-mutasi" class="tab-content hidden space-y-6">
+                    <!-- 3 Cards Mutasi -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+                        <!-- Card Kelahiran -->
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                            <div>
+                                <div class="w-11 h-11 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center text-xl mb-3">
+                                    <i class="fa-solid fa-baby"></i>
+                                </div>
+                                <h3 class="font-bold text-slate-800 text-base">Pencatatan Kelahiran</h3>
+                                <p class="text-xs text-slate-500 mt-1">Tambahkan data bayi baru lahir langsung ke dalam Kartu Keluarga (KK) yang sudah terdaftar.</p>
+                            </div>
+                            <button onclick="openMutasiModal('LAHIR')" class="mt-4 w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-xl transition">
+                                <i class="fa-solid fa-plus mr-1"></i> Catat Kelahiran
+                            </button>
+                        </div>
+
+                        <!-- Card Pindah Keluar -->
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                            <div>
+                                <div class="w-11 h-11 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center text-xl mb-3">
+                                    <i class="fa-solid fa-truck-moving"></i>
+                                </div>
+                                <h3 class="font-bold text-slate-800 text-base">Pindah Keluar Desa</h3>
+                                <p class="text-xs text-slate-500 mt-1">Perbarui status penduduk yang pindah domisili keluar desa agar tidak terhitung sebagai warga aktif.</p>
+                            </div>
+                            <button onclick="openMutasiModal('PINDAH')" class="mt-4 w-full py-2.5 px-4 bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium rounded-xl transition">
+                                <i class="fa-solid fa-arrow-right-from-bracket mr-1"></i> Catat Pindah
+                            </button>
+                        </div>
+
+                        <!-- Card Kematian -->
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                            <div>
+                                <div class="w-11 h-11 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center text-xl mb-3">
+                                    <i class="fa-solid fa-book-skull"></i>
+                                </div>
+                                <h3 class="font-bold text-slate-800 text-base">Pencatatan Kematian</h3>
+                                <p class="text-xs text-slate-500 mt-1">Catat peristiwa kematian warga, tanggal meninggal, dan perbarui status kependudukan otomatis.</p>
+                            </div>
+                            <button onclick="openMutasiModal('MENINGGAL')" class="mt-4 w-full py-2.5 px-4 bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium rounded-xl transition">
+                                <i class="fa-solid fa-file-medical mr-1"></i> Catat Kematian
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Riwayat Log Mutasi -->
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+                            <div>
+                                <h3 class="font-bold text-slate-800">Riwayat Log Mutasi Penduduk</h3>
+                                <p class="text-xs text-slate-500">Catatan kronologis peristiwa lahir, pindah, dan meninggal dunia.</p>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm text-left">
+                                <thead class="text-xs text-slate-600 uppercase bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th class="px-4 py-3">Tanggal Peristiwa</th>
+                                        <th class="px-4 py-3">Jenis Mutasi</th>
+                                        <th class="px-4 py-3">NIK & Nama Penduduk</th>
+                                        <th class="px-4 py-3">No. KK</th>
+                                        <th class="px-4 py-3">Keterangan / Detail</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="mutasi-log-body" class="divide-y divide-slate-100"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ==================== TAB 4: CETAK KARTU KELUARGA (KK) ==================== -->
+                <section id="tab-cetak-kk" class="tab-content hidden space-y-5">
+                    <!-- Control Bar -->
+                    <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4 no-print">
+                        <div class="flex flex-wrap items-center gap-3 flex-1 min-w-[260px]">
+                            <label class="text-sm font-semibold text-slate-700 whitespace-nowrap">Pilih Kartu Keluarga:</label>
+                            <select id="select-kk-cetak" onchange="renderKKDocument()" class="flex-1 max-w-md px-3.5 py-2 text-sm border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 outline-none">
+                            </select>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="window.print()" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-sm transition flex items-center gap-2">
+                                <i class="fa-solid fa-print"></i> Cetak / Simpan PDF (A4 Landscape)
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2.5 rounded-xl text-xs flex items-center gap-2 no-print">
+                        <i class="fa-solid fa-circle-info text-amber-600"></i>
+                        <span>Dokumen Kartu Keluarga ini disusun sesuai standar formulir nasional dengan tanda tangan <strong>Kepala Desa</strong> dan logo yang dapat diatur pada menu <strong>Pengaturan Desa & Logo</strong>.</span>
+                    </div>
+
+                    <!-- Preview Wrapper -->
+                    <div class="kk-paper-wrapper">
+                        <div id="kk-print-area" class="kk-document">
+                            <!-- Header KK -->
+                            <div class="flex items-start justify-between mb-1">
+                                <!-- Logo Kiri -->
+                                <div class="w-24 flex flex-col items-center text-center">
+                                    <div id="kk-logo-container" class="w-14 h-14 flex items-center justify-center">
+                                        <!-- Default Garuda SVG -->
+                                        <svg viewBox="0 0 100 100" class="w-14 h-14 text-black fill-current">
+                                            <path d="M50 5 C35 15, 20 20, 10 35 C20 40, 25 45, 20 60 C30 58, 35 65, 35 80 L50 92 L65 80 C65 65, 70 58, 80 60 C75 45, 80 40, 90 35 C80 20, 65 15, 50 5 Z M50 25 L62 35 L58 55 L50 62 L42 55 L38 35 Z"/>
+                                            <circle cx="50" cy="43" r="6" fill="white"/>
+                                        </svg>
+                                    </div>
+                                    <span id="kk-header-subtext" class="text-[6.5pt] font-bold tracking-tight mt-0.5 leading-tight uppercase">REPUBLIK INDONESIA</span>
+                                </div>
+
+                                <!-- Judul Tengah -->
+                                <div class="flex-1 text-center pt-1">
+                                    <div class="kk-title">KARTU KELUARGA</div>
+                                    <div class="kk-number">No.<span id="kk-doc-nokk">1509010000000000</span></div>
+                                </div>
+
+                                <!-- Spacer Kanan agar Judul Center -->
+                                <div class="w-24"></div>
+                            </div>
+
+                            <!-- Metadata Kepala Keluarga & Wilayah -->
+                            <div class="grid grid-cols-12 gap-2 mt-1 mb-1">
+                                <!-- Kiri -->
+                                <div class="col-span-7">
+                                    <table class="kk-meta-table w-full">
+                                        <tr>
+                                            <td class="w-36">Nama Kepala Keluarga</td>
+                                            <td class="w-2">:</td>
+                                            <td class="font-bold uppercase" id="kk-doc-kepala">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Alamat</td>
+                                            <td>:</td>
+                                            <td class="uppercase" id="kk-doc-alamat">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td>RT/RW</td>
+                                            <td>:</td>
+                                            <td id="kk-doc-rtrw">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Kode Pos</td>
+                                            <td>:</td>
+                                            <td id="kk-doc-kodepos">-</td>
+                                        </tr>
+                                    </table>
+                                </div>
+                                <!-- Kanan -->
+                                <div class="col-span-5">
+                                    <table class="kk-meta-table w-full">
+                                        <tr>
+                                            <td class="w-28">Desa/Kelurahan</td>
+                                            <td class="w-2">:</td>
+                                            <td class="uppercase" id="kk-doc-desa">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Kecamatan</td>
+                                            <td>:</td>
+                                            <td class="uppercase" id="kk-doc-kecamatan">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Kabupaten/Kota</td>
+                                            <td>:</td>
+                                            <td class="uppercase" id="kk-doc-kabupaten">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Provinsi</td>
+                                            <td>:</td>
+                                            <td class="uppercase" id="kk-doc-provinsi">-</td>
+                                        </tr>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- TABEL ATAS (Kolom 1 - 9, 10 Baris Tetap) -->
+                            <table class="kk-grid-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 2.5%;">No</th>
+                                        <th style="width: 19%;">Nama Lengkap</th>
+                                        <th style="width: 11.5%;">NIK</th>
+                                        <th style="width: 7.5%;">Jenis<br>Kelamin</th>
+                                        <th style="width: 11%;">Tempat Lahir</th>
+                                        <th style="width: 7.5%;">Tanggal<br>Lahir</th>
+                                        <th style="width: 7%;">Agama</th>
+                                        <th style="width: 13%;">Pendidikan</th>
+                                        <th style="width: 14%;">Jenis Pekerjaan</th>
+                                        <th style="width: 7%;">Golongan<br>Darah</th>
+                                    </tr>
+                                    <tr class="kk-col-num">
+                                        <th></th>
+                                        <th>(1)</th>
+                                        <th>(2)</th>
+                                        <th>(3)</th>
+                                        <th>(4)</th>
+                                        <th>(5)</th>
+                                        <th>(6)</th>
+                                        <th>(7)</th>
+                                        <th>(8)</th>
+                                        <th>(9)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="kk-table-top-body">
+                                    <!-- 10 Baris di-render via JS -->
+                                </tbody>
+                            </table>
+
+                            <!-- TABEL BAWAH (Kolom 10 - 17, 10 Baris Tetap) -->
+                            <table class="kk-grid-table mt-1.5">
+                                <thead>
+                                    <tr>
+                                        <th rowspan="2" style="width: 2.5%;">No.</th>
+                                        <th rowspan="2" style="width: 11.5%;">Status<br>Perkawinan</th>
+                                        <th rowspan="2" style="width: 8%;">Tanggal<br>Perkawinan</th>
+                                        <th rowspan="2" style="width: 13%;">Status Hubungan<br>Dalam Keluarga</th>
+                                        <th rowspan="2" style="width: 8%;">Kewarganegaraan</th>
+                                        <th colspan="2" style="width: 16%;">Dokumen Imigrasi</th>
+                                        <th colspan="2" style="width: 41%;">Nama Orang Tua</th>
+                                    </tr>
+                                    <tr>
+                                        <th style="width: 8%;">No. Paspor</th>
+                                        <th style="width: 8%;">No. KITAP</th>
+                                        <th style="width: 20.5%;">Ayah</th>
+                                        <th style="width: 20.5%;">Ibu</th>
+                                    </tr>
+                                    <tr class="kk-col-num">
+                                        <th></th>
+                                        <th>(10)</th>
+                                        <th>(11)</th>
+                                        <th>(12)</th>
+                                        <th>(13)</th>
+                                        <th>(14)</th>
+                                        <th>(15)</th>
+                                        <th>(16)</th>
+                                        <th>(17)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="kk-table-bottom-body">
+                                    <!-- 10 Baris di-render via JS -->
+                                </tbody>
+                            </table>
+
+                            <!-- Bagian Tanda Tangan Bawah (Kepala Keluarga & Kepala Desa) -->
+                            <div class="grid grid-cols-12 mt-3 text-[7.5pt]">
+                                <!-- Kiri: Dikeluarkan Tanggal -->
+                                <div class="col-span-4 pt-1">
+                                    <div class="flex items-center gap-2">
+                                        <span>Dikeluarkan Tanggal</span>
+                                        <span>:</span>
+                                        <span id="kk-doc-tgl-keluar" class="border border-black px-2 py-0.5 font-semibold">24-11-2026</span>
+                                    </div>
+                                </div>
+
+                                <!-- Tengah: Kepala Keluarga -->
+                                <div class="col-span-4 text-center pt-1">
+                                    <div class="font-semibold">KEPALA KELUARGA</div>
+                                    <div class="h-14"></div>
+                                    <div id="kk-ttd-kepala" class="font-bold underline uppercase">NAMA KEPALA KELUARGA</div>
+                                    <div class="text-[7pt]">Tanda Tangan/Cap Jempol</div>
+                                </div>
+
+                                <!-- Kanan: Kepala Desa (Sesuai Permintaan User) -->
+                                <div class="col-span-4 text-center pt-1">
+                                    <div id="kk-jabatan-kades" class="font-semibold uppercase">KEPALA DESA TEBING TINGGI</div>
+                                    <div class="h-14 flex items-center justify-center">
+                                        <!-- Ruang Tanda Tangan / Stempel Kepala Desa -->
+                                    </div>
+                                    <div id="kk-ttd-kades" class="font-bold underline uppercase">NAMA KEPALA DESA</div>
+                                    <div id="kk-nip-kades" class="text-[7pt]">NIP. -</div>
+                                </div>
+                            </div>
+
+                            <!-- Catatan Kaki Resmi -->
+                            <div class="mt-2 text-[6.5pt] text-black">
+                                Dokumen ini dicetak melalui Sistem Informasi Kependudukan Desa (SIK-DESA) dan sah sebagai salinan data kependudukan tingkat desa.
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ==================== TAB 5: IMPORT DATA SIAK EXCEL ==================== -->
+                <section id="tab-import" class="tab-content hidden space-y-6">
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm max-w-3xl">
+                        <div class="flex items-start gap-4">
+                            <div class="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center text-2xl shrink-0">
+                                <i class="fa-solid fa-file-excel"></i>
+                            </div>
+                            <div class="flex-1">
+                                <h3 class="text-lg font-bold text-slate-800">Import Data Kependudukan SIAK (Excel)</h3>
+                                <p class="text-sm text-slate-500 mt-1">Unggah file Excel hasil ekspor SIAK (.xlsx, .xls, atau .csv) untuk memasukkan data penduduk dan Kartu Keluarga secara massal.</p>
+                                
+                                <div class="mt-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
+                                    <h4 class="text-xs font-bold uppercase text-slate-600 mb-2">Langkah 1: Siapkan Format Kolom Excel</h4>
+                                    <p class="text-xs text-slate-600 mb-3">Pastikan baris pertama (header) file Excel sesuai dengan standar template SIAK berikut:</p>
+                                    <button onclick="downloadTemplateSIAK()" class="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-xl transition inline-flex items-center gap-2">
+                                        <i class="fa-solid fa-download"></i> Download Template Excel SIAK (.xlsx)
+                                    </button>
+                                </div>
+
+                                <div class="mt-4 p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
+                                    <h4 class="text-xs font-bold uppercase text-slate-600">Langkah 2: Pilih Mode & Unggah File</h4>
+                                    
+                                    <div class="flex flex-wrap gap-4 text-sm">
+                                        <label class="flex items-center gap-2 cursor-pointer">
+                                            <input type="radio" name="import-mode" value="merge" checked class="text-emerald-600 focus:ring-emerald-500">
+                                            <span>Gabung & Perbarui (Update NIK jika sudah ada)</span>
+                                        </label>
+                                        <label class="flex items-center gap-2 cursor-pointer">
+                                            <input type="radio" name="import-mode" value="replace" class="text-emerald-600 focus:ring-emerald-500">
+                                            <span class="text-rose-600 font-medium">Timpa Semua Data Lama (Reset & Import)</span>
+                                        </label>
+                                    </div>
+
+                                    <div class="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center hover:border-emerald-500 transition bg-white">
+                                        <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv" onchange="handleExcelImport(event)" class="hidden">
+                                        <label for="excel-file-input" class="cursor-pointer flex flex-col items-center">
+                                            <i class="fa-solid fa-cloud-arrow-up text-3xl text-emerald-600 mb-2"></i>
+                                            <span class="text-sm font-semibold text-slate-700">Klik untuk memilih file Excel SIAK</span>
+                                            <span class="text-xs text-slate-400 mt-1">Mendukung format .xlsx, .xls, .csv</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ==================== TAB 6: PENGATURAN DESA & LOGO KK ==================== -->
+                <section id="tab-pengaturan" class="tab-content hidden space-y-6">
+                    <form id="form-pengaturan" onsubmit="saveSettings(event)" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <!-- Identitas Wilayah & Kepala Desa -->
+                        <div class="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+                            <h3 class="font-bold text-slate-800 text-base border-b pb-3">Identitas Wilayah & Penandatangan KK</h3>
+                            
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-600 mb-1">Nama Desa / Kelurahan</label>
+                                    <input type="text" id="set-desa" required class="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-600 mb-1">Kecamatan</label>
+                                    <input type="text" id="set-kecamatan" required class="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-600 mb-1">Kabupaten / Kota</label>
+                                    <input type="text" id="set-kabupaten" required class="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-600 mb-1">Provinsi</label>
+                                    <input type="text" id="set-provinsi" required class="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-600 mb-1">Kode Pos Default</label>
+                                    <input type="text" id="set-kodepos" required class="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-600 mb-1">Teks Bawah Logo KK</label>
+                                    <input type="text" id="set-logo-subtext" placeholder="Contoh: PEMERINTAH DESA / REPUBLIK INDONESIA" class="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none">
+                                </div>
+                            </div>
+
+                            <div class="pt-3 border-t">
+                                <h4 class="text-xs font-bold uppercase text-emerald-700 mb-3">Pejabat Penandatangan Kartu Keluarga (Kepala Desa)</h4>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-600 mb-1">Nama Lengkap Kepala Desa (Beserta Gelar)</label>
+                                        <input type="text" id="set-kades-nama" required class="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-600 mb-1">NIP / NIAP Kepala Desa</label>
+                                        <input type="text" id="set-kades-nip" placeholder="Contoh: NIP. 197805122005011004" class="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="pt-2 flex justify-end">
+                                <button type="submit" class="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-xl shadow-sm transition">
+                                    <i class="fa-solid fa-floppy-disk mr-1.5"></i> Simpan Pengaturan
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Upload Logo Kartu Keluarga -->
+                        <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                            <div>
+                                <h3 class="font-bold text-slate-800 text-base border-b pb-3 mb-4">Logo Dokumen Kartu Keluarga</h3>
+                                <p class="text-xs text-slate-500 mb-4">Unggah logo Kabupaten/Kota, Logo Desa, atau Lambang Garuda untuk ditampilkan di sudut kiri atas dokumen cetak Kartu Keluarga.</p>
+                                
+                                <div class="w-36 h-36 mx-auto border-2 border-dashed border-slate-300 rounded-2xl flex items-center justify-center bg-slate-50 p-3 mb-4 overflow-hidden">
+                                    <img id="preview-logo-setting" src="" alt="Preview Logo" class="max-h-full max-w-full object-contain hidden">
+                                    <div id="default-logo-setting" class="text-center text-slate-400">
+                                        <i class="fa-solid fa-image text-3xl mb-1"></i>
+                                        <p class="text-[11px]">Logo Default</p>
+                                    </div>
+                                </div>
+
+                                <input type="file" id="upload-logo-input" accept="image/png, image/jpeg, image/svg+xml" onchange="handleLogoUpload(event)" class="hidden">
+                                <div class="flex flex-col gap-2">
+                                    <label for="upload-logo-input" class="w-full py-2 px-4 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-xl text-center cursor-pointer transition">
+                                        <i class="fa-solid fa-upload mr-1"></i> Pilih File Logo (PNG/JPG/SVG)
+                                    </label>
+                                    <button type="button" onclick="resetLogoDefault()" class="w-full py-2 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-xl transition">
+                                        Gunakan Logo Bawaan
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </section>
+
+            </main>
+        </div>
+    </div>
+
+    <!-- ==================== MODAL DETAIL / TAMBAH / EDIT PENDUDUK ==================== -->
+    <div id="modal-penduduk" class="fixed inset-0 bg-slate-900/60 z-50 hidden items-center justify-center p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl shadow-xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+                <h3 id="modal-penduduk-title" class="font-bold text-slate-800">Detail Biodata Penduduk</h3>
+                <button onclick="closeModal('modal-penduduk')" class="text-slate-400 hover:text-slate-600 text-lg">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <form id="form-penduduk" onsubmit="savePenduduk(event)" class="p-6 overflow-y-auto space-y-4">
+                <input type="hidden" id="pen-edit-id">
+                
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Nomor Kartu Keluarga (No. KK) *</label>
+                        <input type="text" id="pen-nokk" required maxlength="16" placeholder="16 Digit No. KK" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Nomor Induk Kependudukan (NIK) *</label>
+                        <input type="text" id="pen-nik" required maxlength="16" placeholder="16 Digit NIK" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl">
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Nama Lengkap *</label>
+                        <input type="text" id="pen-nama" required class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl uppercase">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Jenis Kelamin *</label>
+                        <select id="pen-jk" required class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl bg-white">
+                            <option value="LAKI-LAKI">LAKI-LAKI</option>
+                            <option value="PEREMPUAN">PEREMPUAN</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Golongan Darah</label>
+                        <select id="pen-goldar" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl bg-white">
+                            <option value="TIDAK TAHU">TIDAK TAHU</option>
+                            <option value="A">A</option>
+                            <option value="B">B</option>
+                            <option value="AB">AB</option>
+                            <option value="O">O</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Tempat Lahir *</label>
+                        <input type="text" id="pen-tmplahir" required class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl uppercase">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Tanggal Lahir *</label>
+                        <input type="date" id="pen-tgllahir" required class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Agama</label>
+                        <select id="pen-agama" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl bg-white">
+                            <option value="ISLAM">ISLAM</option>
+                            <option value="KRISTEN">KRISTEN</option>
+                            <option value="KATOLIK">KATOLIK</option>
+                            <option value="HINDU">HINDU</option>
+                            <option value="BUDDHA">BUDDHA</option>
+                            <option value="KHONGHUCU">KHONGHUCU</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Pendidikan Terakhir</label>
+                        <select id="pen-pendidikan" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl bg-white">
+                            <option value="TIDAK/BLM SEKOLAH">TIDAK/BLM SEKOLAH</option>
+                            <option value="BELUM TAMAT SD/SEDERAJAT">BELUM TAMAT SD/SEDERAJAT</option>
+                            <option value="TAMAT SD/SEDERAJAT">TAMAT SD/SEDERAJAT</option>
+                            <option value="SLTP/SEDERAJAT">SLTP/SEDERAJAT</option>
+                            <option value="SLTA/SEDERAJAT">SLTA/SEDERAJAT</option>
+                            <option value="DIPLOMA I/II">DIPLOMA I/II</option>
+                            <option value="AKADEMI/DIPLOMA III/S. MUDA">AKADEMI/DIPLOMA III/S. MUDA</option>
+                            <option value="DIPLOMA IV/STRATA I">DIPLOMA IV/STRATA I</option>
+                            <option value="STRATA II">STRATA II</option>
+                            <option value="STRATA III">STRATA III</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Jenis Pekerjaan</label>
+                        <input type="text" id="pen-pekerjaan" list="list-pekerjaan" value="BELUM/TIDAK BEKERJA" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl uppercase">
+                        <datalist id="list-pekerjaan">
+                            <option value="BELUM/TIDAK BEKERJA">
+                            <option value="MENGURUS RUMAH TANGGA">
+                            <option value="PELAJAR/MAHASISWA">
+                            <option value="PEGAWAI NEGERI SIPIL (PNS)">
+                            <option value="PETANI/PEKEBUN">
+                            <option value="WIRASWASTA">
+                            <option value="KARYAWAN SWASTA">
+                            <option value="BURUH HARIAN LEPAS">
+                        </datalist>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Status Perkawinan</label>
+                        <select id="pen-kawin" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl bg-white">
+                            <option value="BELUM KAWIN">BELUM KAWIN</option>
+                            <option value="KAWIN TERCATAT">KAWIN TERCATAT</option>
+                            <option value="KAWIN BELUM TERCATAT">KAWIN BELUM TERCATAT</option>
+                            <option value="CERAI HIDUP">CERAI HIDUP</option>
+                            <option value="CERAI MATI">CERAI MATI</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Tanggal Perkawinan (Opsional)</label>
+                        <input type="date" id="pen-tglkawin" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Status Hubungan Dalam Keluarga</label>
+                        <select id="pen-shdk" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl bg-white">
+                            <option value="KEPALA KELUARGA">KEPALA KELUARGA</option>
+                            <option value="ISTRI">ISTRI</option>
+                            <option value="ANAK">ANAK</option>
+                            <option value="ORANG TUA">ORANG TUA</option>
+                            <option value="MERTUA">MERTUA</option>
+                            <option value="FAMILI LAIN">FAMILI LAIN</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Nama Ayah</label>
+                        <input type="text" id="pen-ayah" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl uppercase">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Nama Ibu</label>
+                        <input type="text" id="pen-ibu" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl uppercase">
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Alamat Lengkap</label>
+                        <input type="text" id="pen-alamat" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl uppercase">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">RT (3 Digit, misal: 001)</label>
+                        <input type="text" id="pen-rt" value="001" maxlength="3" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">RW (3 Digit, misal: 001)</label>
+                        <input type="text" id="pen-rw" value="001" maxlength="3" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl">
+                    </div>
+                </div>
+
+                <div class="pt-4 border-t flex justify-end gap-2">
+                    <button type="button" onclick="closeModal('modal-penduduk')" class="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl">Batal</button>
+                    <button type="submit" class="px-5 py-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl">Simpan Data</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ==================== MODAL MUTASI (LAHIR, PINDAH, MENINGGAL) ==================== -->
+    <div id="modal-mutasi" class="fixed inset-0 bg-slate-900/60 z-50 hidden items-center justify-center p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+                <h3 id="modal-mutasi-title" class="font-bold text-slate-800">Form Mutasi Penduduk</h3>
+                <button onclick="closeModal('modal-mutasi')" class="text-slate-400 hover:text-slate-600 text-lg">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <form id="form-mutasi" onsubmit="submitMutasi(event)" class="p-6 space-y-4">
+                <input type="hidden" id="mutasi-type">
+
+                <!-- Form Khusus Kelahiran -->
+                <div id="mutasi-fields-lahir" class="hidden space-y-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Pilih Kartu Keluarga (KK) Orang Tua *</label>
+                        <select id="lahir-nokk" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl bg-white"></select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">NIK Bayi (Sementara / NIK Baru) *</label>
+                        <input type="text" id="lahir-nik" maxlength="16" placeholder="16 Digit NIK" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Nama Lengkap Bayi *</label>
+                        <input type="text" id="lahir-nama" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl uppercase">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Jenis Kelamin</label>
+                            <select id="lahir-jk" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl bg-white">
+                                <option value="LAKI-LAKI">LAKI-LAKI</option>
+                                <option value="PEREMPUAN">PEREMPUAN</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Golongan Darah</label>
+                            <select id="lahir-goldar" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl bg-white">
+                                <option value="TIDAK TAHU">TIDAK TAHU</option>
+                                <option value="A">A</option>
+                                <option value="B">B</option>
+                                <option value="AB">AB</option>
+                                <option value="O">O</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Tempat Lahir *</label>
+                            <input type="text" id="lahir-tmplahir" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl uppercase">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Tanggal Lahir *</label>
+                            <input type="date" id="lahir-tgllahir" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Form Khusus Pindah / Meninggal -->
+                <div id="mutasi-fields-existing" class="hidden space-y-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Pilih Penduduk Aktif *</label>
+                        <select id="mutasi-penduduk-nik" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl bg-white"></select>
+                    </div>
+                    <div>
+                        <label id="mutasi-date-label" class="block text-xs font-semibold text-slate-600 mb-1">Tanggal Peristiwa *</label>
+                        <input type="date" id="mutasi-tanggal" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl">
+                    </div>
+                    <div>
+                        <label id="mutasi-note-label" class="block text-xs font-semibold text-slate-600 mb-1">Keterangan *</label>
+                        <textarea id="mutasi-keterangan" rows="2" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl"></textarea>
+                    </div>
+                </div>
+
+                <div class="pt-3 border-t flex justify-end gap-2">
+                    <button type="button" onclick="closeModal('modal-mutasi')" class="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl">Batal</button>
+                    <button type="submit" class="px-5 py-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl">Proses Mutasi</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ==================== MODAL KONFIRMASI RESET ==================== -->
+    <div id="modal-reset" class="fixed inset-0 bg-slate-900/60 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 text-center">
+            <div class="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center text-xl mx-auto mb-3">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <h3 class="font-bold text-slate-800 text-lg">Reset Data ke Awal?</h3>
+            <p class="text-xs text-slate-500 mt-1">Semua perubahan data penduduk, mutasi, dan pengaturan akan dikembalikan ke data awal simulasi.</p>
+            <div class="mt-5 flex justify-center gap-3">
+                <button onclick="closeModal('modal-reset')" class="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl">Batal</button>
+                <button onclick="executeResetData()" class="px-4 py-2 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl">Ya, Reset Data</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==================== STATE & DEFAULT DATA ====================
+        const STORAGE_KEY_PENDUDUK = 'sikdesa_penduduk_v1';
+        const STORAGE_KEY_MUTASI = 'sikdesa_mutasi_v1';
+        const STORAGE_KEY_SETTINGS = 'sikdesa_settings_v1';
+
+        const DEFAULT_SETTINGS = {
+            desa: 'TEBING TINGGI',
+            kecamatan: 'TEBO TENGAH',
+            kabupaten: 'TEBO',
+            provinsi: 'JAMBI',
+            kodepos: '37571',
+            logoSubtext: 'REPUBLIK INDONESIA',
+            kadesNama: 'H. AHMAD FAUZI, S.IP',
+            kadesNip: 'NIP. 197804122006041008',
+            logoBase64: ''
+        };
+
+        const DEFAULT_PENDUDUK = [
+            // Keluarga 1 (Sesuai referensi gambar)
+            {
+                id: 'p1', no_kk: '1509011205850008', nik: '1509011205850003',
+                nama: 'HENDRA YOSPIKA', jk: 'LAKI-LAKI', tmp_lahir: 'KOTO BARU', tgl_lahir: '1985-05-12',
+                agama: 'ISLAM', pendidikan: 'DIPLOMA IV/STRATA I', pekerjaan: 'PEGAWAI NEGERI SIPIL (PNS)',
+                goldar: 'O', status_kawin: 'KAWIN TERCATAT', tgl_kawin: '2017-07-14',
+                shdk: 'KEPALA KELUARGA', wni: 'WNI', paspor: '-', kitap: '-',
+                ayah: 'SUHAIMI', ibu: 'ROHANIATI',
+                alamat: 'JL. LINTAS TEBO - BUNGO KM.05, PERUM. PALLIMA CITY RESIDENT', rt: '011', rw: '003', kode_pos: '37571',
+                status: 'AKTIF'
+            },
+            {
+                id: 'p2', no_kk: '1509011205850008', nik: '1509015408910002',
+                nama: 'FADHLA HAYATI', jk: 'PEREMPUAN', tmp_lahir: 'KOTO BERAPAK', tgl_lahir: '1991-08-14',
+                agama: 'ISLAM', pendidikan: 'DIPLOMA IV/STRATA I', pekerjaan: 'MENGURUS RUMAH TANGGA',
+                goldar: 'A', status_kawin: 'KAWIN TERCATAT', tgl_kawin: '2017-07-14',
+                shdk: 'ISTRI', wni: 'WNI', paspor: '-', kitap: '-',
+                ayah: 'ZUL AKMAL', ibu: 'NURMAWAR',
+                alamat: 'JL. LINTAS TEBO - BUNGO KM.05, PERUM. PALLIMA CITY RESIDENT', rt: '011', rw: '003', kode_pos: '37571',
+                status: 'AKTIF'
+            },
+            {
+                id: 'p3', no_kk: '1509011205850008', nik: '1509010309180001',
+                nama: 'MUHAMMAD ZAFRAN HABIBI', jk: 'LAKI-LAKI', tmp_lahir: 'PAINAN', tgl_lahir: '2018-09-03',
+                agama: 'ISLAM', pendidikan: 'TIDAK/BLM SEKOLAH', pekerjaan: 'BELUM/TIDAK BEKERJA',
+                goldar: 'O', status_kawin: 'BELUM KAWIN', tgl_kawin: '',
+                shdk: 'ANAK', wni: 'WNI', paspor: '-', kitap: '-',
+                ayah: 'HENDRA YOSPIKA', ibu: 'FADHLA HAYATI',
+                alamat: 'JL. LINTAS TEBO - BUNGO KM.05, PERUM. PALLIMA CITY RESIDENT', rt: '011', rw: '003', kode_pos: '37571',
+                status: 'AKTIF'
+            },
+            // Keluarga 2
+            {
+                id: 'p4', no_kk: '1509012203750012', nik: '1509012203750001',
+                nama: 'BUDI SANTOSO', jk: 'LAKI-LAKI', tmp_lahir: 'TEBO', tgl_lahir: '1975-03-22',
+                agama: 'ISLAM', pendidikan: 'SLTA/SEDERAJAT', pekerjaan: 'PETANI/PEKEBUN',
+                goldar: 'B', status_kawin: 'KAWIN TERCATAT', tgl_kawin: '2000-05-10',
+                shdk: 'KEPALA KELUARGA', wni: 'WNI', paspor: '-', kitap: '-',
+                ayah: 'DARMAWAN', ibu: 'SITI AMINAH',
+                alamat: 'DUSUN SUKA MAJU', rt: '002', rw: '001', kode_pos: '37571',
+                status: 'AKTIF'
+            },
+            {
+                id: 'p5', no_kk: '1509012203750012', nik: '1509014511790002',
+                nama: 'SITI RAHMAWATI', jk: 'PEREMPUAN', tmp_lahir: 'JAMBI', tgl_lahir: '1979-11-05',
+                agama: 'ISLAM', pendidikan: 'SLTP/SEDERAJAT', pekerjaan: 'MENGURUS RUMAH TANGGA',
+                goldar: 'AB', status_kawin: 'KAWIN TERCATAT', tgl_kawin: '2000-05-10',
+                shdk: 'ISTRI', wni: 'WNI', paspor: '-', kitap: '-',
+                ayah: 'HASAN BASRI', ibu: 'MARIAM',
+                alamat: 'DUSUN SUKA MAJU', rt: '002', rw: '001', kode_pos: '37571',
+                status: 'AKTIF'
+            },
+            {
+                id: 'p6', no_kk: '1509012203750012', nik: '1509011002040003',
+                nama: 'RIZKI PRATAMA', jk: 'LAKI-LAKI', tmp_lahir: 'TEBO', tgl_lahir: '2004-02-10',
+                agama: 'ISLAM', pendidikan: 'SLTA/SEDERAJAT', pekerjaan: 'PELAJAR/MAHASISWA',
+                goldar: 'B', status_kawin: 'BELUM KAWIN', tgl_kawin: '',
+                shdk: 'ANAK', wni: 'WNI', paspor: '-', kitap: '-',
+                ayah: 'BUDI SANTOSO', ibu: 'SITI RAHMAWATI',
+                alamat: 'DUSUN SUKA MAJU', rt: '002', rw: '001', kode_pos: '37571',
+                status: 'AKTIF'
+            },
+            // Keluarga 3 (Lansia)
+            {
+                id: 'p7', no_kk: '1509010506580004', nik: '1509010506580001',
+                nama: 'ABDUL RAHMAN', jk: 'LAKI-LAKI', tmp_lahir: 'MUARA TEBO', tgl_lahir: '1958-06-05',
+                agama: 'ISLAM', pendidikan: 'TAMAT SD/SEDERAJAT', pekerjaan: 'WIRASWASTA',
+                goldar: 'O', status_kawin: 'KAWIN TERCATAT', tgl_kawin: '1980-08-17',
+                shdk: 'KEPALA KELUARGA', wni: 'WNI', paspor: '-', kitap: '-',
+                ayah: 'M. YUSUF', ibu: 'KHADIJAH',
+                alamat: 'DUSUN HARAPAN BARU', rt: '004', rw: '002', kode_pos: '37571',
+                status: 'AKTIF'
+            },
+            {
+                id: 'p8', no_kk: '1509010506580004', nik: '1509015009620002',
+                nama: 'NURHAYATI', jk: 'PEREMPUAN', tmp_lahir: 'MUARA TEBO', tgl_lahir: '1962-09-10',
+                agama: 'ISLAM', pendidikan: 'TAMAT SD/SEDERAJAT', pekerjaan: 'MENGURUS RUMAH TANGGA',
+                goldar: 'A', status_kawin: 'KAWIN TERCATAT', tgl_kawin: '1980-08-17',
+                shdk: 'ISTRI', wni: 'WNI', paspor: '-', kitap: '-',
+                ayah: 'IBRAHIM', ibu: 'AMINAH',
+                alamat: 'DUSUN HARAPAN BARU', rt: '004', rw: '002', kode_pos: '37571',
+                status: 'AKTIF'
+            }
+        ];
+
+        const DEFAULT_MUTASI = [
+            {
+                id: 'm1',
+                tanggal: '2026-10-15',
+                jenis: 'LAHIR',
+                nik: '1509010309180001',
+                nama: 'MUHAMMAD ZAFRAN HABIBI',
+                no_kk: '1509011205850008',
+                keterangan: 'Kelahiran anak dari pasangan HENDRA YOSPIKA & FADHLA HAYATI'
+            }
+        ];
+
+        let pendudukList = [];
+        let mutasiList = [];
+        let settings = {};
+        let charts = {};
+
+        // ==================== INITIALIZATION ====================
+        window.onload = function() {
+            loadFromStorage();
+            updateCurrentDate();
+            applySettingsToUI();
+            refreshAllViews();
+        };
+
+        function loadFromStorage() {
+            const rawPen = localStorage.getItem(STORAGE_KEY_PENDUDUK);
+            const rawMut = localStorage.getItem(STORAGE_KEY_MUTASI);
+            const rawSet = localStorage.getItem(STORAGE_KEY_SETTINGS);
+
+            pendudukList = rawPen ? JSON.parse(rawPen) : JSON.parse(JSON.stringify(DEFAULT_PENDUDUK));
+            mutasiList = rawMut ? JSON.parse(rawMut) : JSON.parse(JSON.stringify(DEFAULT_MUTASI));
+            settings = rawSet ? { ...DEFAULT_SETTINGS, ...JSON.parse(rawSet) } : { ...DEFAULT_SETTINGS };
+
+            if (!rawPen) saveToStorage();
+        }
+
+        function saveToStorage() {
+            localStorage.setItem(STORAGE_KEY_PENDUDUK, JSON.stringify(pendudukList));
+            localStorage.setItem(STORAGE_KEY_MUTASI, JSON.stringify(mutasiList));
+            localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+        }
+
+        function refreshAllViews() {
+            renderDashboard();
+            populateRTRWFilter();
+            renderPendudukTable();
+            renderMutasiLog();
+            populateKKSelector();
+            renderKKDocument();
+        }
+
+        function updateCurrentDate() {
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            document.getElementById('current-date-display').textContent = new Date().toLocaleDateString('id-ID', options);
+        }
+
+        // ==================== NAVIGATION & UI HELPERS ====================
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.getElementById('tab-' + tabName).classList.remove('hidden');
+
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('bg-emerald-600', 'text-white');
+                btn.classList.add('text-slate-300', 'hover:bg-slate-800');
+            });
+            const activeBtn = document.getElementById('nav-' + tabName);
+            if (activeBtn) {
+                activeBtn.classList.remove('text-slate-300', 'hover:bg-slate-800');
+                activeBtn.classList.add('bg-emerald-600', 'text-white');
+            }
+
+            const titles = {
+                'dashboard': ['Dashboard & Rekapitulasi', 'Ringkasan statistik kependudukan desa terkini'],
+                'penduduk': ['Data Penduduk & Biodata', 'Kelola seluruh data warga desa dan anggota keluarga'],
+                'mutasi': ['Layanan Mutasi Penduduk', 'Pencatatan kelahiran, pindah keluar, dan kematian warga'],
+                'cetak-kk': ['Cetak Kartu Keluarga (KK)', 'Pratinjau dan cetak dokumen KK format standar A4 Landscape'],
+                'import': ['Import Data SIAK Excel', 'Unggah file Excel SIAK untuk memperbarui database desa'],
+                'pengaturan': ['Pengaturan Desa & Logo KK', 'Atur identitas desa, Kepala Desa, dan logo dokumen KK']
+            };
+            if (titles[tabName]) {
+                document.getElementById('page-title').textContent = titles[tabName][0];
+                document.getElementById('page-subtitle').textContent = titles[tabName][1];
+            }
+
+            if (tabName === 'dashboard') renderDashboard();
+            if (tabName === 'cetak-kk') {
+                populateKKSelector();
+                renderKKDocument();
+            }
+
+            // Close mobile sidebar if open
+            const sidebar = document.getElementById('sidebar');
+            if (!sidebar.classList.contains('-translate-x-full') && window.innerWidth < 1024) {
+                toggleSidebar();
+            }
+        }
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const backdrop = document.getElementById('sidebar-backdrop');
+            sidebar.classList.toggle('-translate-x-full');
+            backdrop.classList.toggle('hidden');
+        }
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            const bg = type === 'success' ? 'bg-emerald-600' : (type === 'error' ? 'bg-rose-600' : 'bg-slate-800');
+            const icon = type === 'success' ? 'fa-circle-check' : (type === 'error' ? 'fa-circle-exclamation' : 'fa-circle-info');
+            
+            toast.className = `${bg} text-white px-4 py-3 rounded-xl shadow-lg text-sm flex items-center gap-2.5 transform transition-all duration-300 pointer-events-auto`;
+            toast.innerHTML = `<i class="fa-solid ${icon}"></i><span>${message}</span>`;
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-x-5');
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+
+        function openModal(id) {
+            const modal = document.getElementById(id);
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeModal(id) {
+            const modal = document.getElementById(id);
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        // ==================== DATE & AGE UTILITIES ====================
+        function calculateAge(birthDateStr) {
+            if (!birthDateStr) return 0;
+            const today = new Date();
+            const birth = new Date(birthDateStr);
+            if (isNaN(birth.getTime())) return 0;
+            let age = today.getFullYear() - birth.getFullYear();
+            const m = today.getMonth() - birth.getMonth();
+            if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+                age--;
+            }
+            return Math.max(0, age);
+        }
+
+        function formatDateDDMMYYYY(dateStr) {
+            if (!dateStr || dateStr === '-') return '-';
+            const parts = dateStr.split('-');
+            if (parts.length === 3) {
+                return `${parts[2]}-${parts[1]}-${parts[0]}`;
+            }
+            return dateStr;
+        }
+
+        // ==================== 1. DASHBOARD & REKAPITULASI ====================
+        function renderDashboard() {
+            const aktif = pendudukList.filter(p => p.status === 'AKTIF');
+            const total = aktif.length;
+            const laki = aktif.filter(p => p.jk === 'LAKI-LAKI').length;
+            const perempuan = aktif.filter(p => p.jk === 'PEREMPUAN').length;
+            
+            // Hitung KK unik aktif
+            const kkSet = new Set(aktif.map(p => p.no_kk));
+            const totalKK = kkSet.size;
+
+            document.getElementById('stat-total-penduduk').textContent = total.toLocaleString('id-ID');
+            document.getElementById('stat-total-kk').textContent = totalKK.toLocaleString('id-ID');
+            document.getElementById('stat-laki').textContent = laki.toLocaleString('id-ID');
+            document.getElementById('stat-perempuan').textContent = perempuan.toLocaleString('id-ID');
+
+            const lakiPct = total > 0 ? ((laki / total) * 100).toFixed(1) : 0;
+            const perPct = total > 0 ? ((perempuan / total) * 100).toFixed(1) : 0;
+            document.getElementById('stat-laki-pct').textContent = `${lakiPct}% dari total`;
+            document.getElementById('stat-perempuan-pct').textContent = `${perPct}% dari total`;
+
+            // Kelompok Umur
+            const ageGroups = [
+                { label: 'Balita (0-5 Th)', min: 0, max: 5, l: 0, p: 0 },
+                { label: 'Anak (6-12 Th)', min: 6, max: 12, l: 0, p: 0 },
+                { label: 'Remaja (13-17 Th)', min: 13, max: 17, l: 0, p: 0 },
+                { label: 'Pemuda (18-30 Th)', min: 18, max: 30, l: 0, p: 0 },
+                { label: 'Dewasa (31-59 Th)', min: 31, max: 59, l: 0, p: 0 },
+                { label: 'Lansia (60+ Th)', min: 60, max: 200, l: 0, p: 0 }
+            ];
+
+            const eduMap = {};
+            const jobMap = {};
+
+            aktif.forEach(p => {
+                const age = calculateAge(p.tgl_lahir);
+                for (let g of ageGroups) {
+                    if (age >= g.min && age <= g.max) {
+                        if (p.jk === 'LAKI-LAKI') g.l++;
+                        else g.p++;
+                        break;
+                    }
+                }
+
+                const edu = (p.pendidikan || 'TIDAK DIKETAHUI').toUpperCase();
+                eduMap[edu] = (eduMap[edu] || 0) + 1;
+
+                const job = (p.pekerjaan || 'LAINNYA').toUpperCase();
+                jobMap[job] = (jobMap[job] || 0) + 1;
+            });
+
+            // Render Tabel Umur
+            const tbodyUmur = document.getElementById('table-rekap-umur');
+            tbodyUmur.innerHTML = ageGroups.map(g => `
+                <tr class="hover:bg-slate-50">
+                    <td class="px-4 py-2 font-medium text-slate-700">${g.label}</td>
+                    <td class="px-4 py-2 text-right text-slate-600">${g.l}</td>
+                    <td class="px-4 py-2 text-right text-slate-600">${g.p}</td>
+                    <td class="px-4 py-2 text-right font-bold text-slate-800">${g.l + g.p}</td>
+                </tr>
+            `).join('');
+
+            // Render Tabel Pendidikan
+            const sortedEdu = Object.entries(eduMap).sort((a, b) => b[1] - a[1]);
+            document.getElementById('table-rekap-pendidikan').innerHTML = sortedEdu.map(([k, v]) => `
+                <tr class="hover:bg-slate-50">
+                    <td class="px-4 py-2 text-xs font-medium text-slate-700">${k}</td>
+                    <td class="px-4 py-2 text-right font-bold text-slate-800">${v}</td>
+                    <td class="px-4 py-2 text-right text-xs text-slate-500">${total > 0 ? ((v/total)*100).toFixed(1) : 0}%</td>
+                </tr>
+            `).join('');
+
+            // Render Tabel Pekerjaan
+            const sortedJob = Object.entries(jobMap).sort((a, b) => b[1] - a[1]);
+            document.getElementById('table-rekap-pekerjaan').innerHTML = sortedJob.map(([k, v]) => `
+                <tr class="hover:bg-slate-50">
+                    <td class="px-4 py-2 text-xs font-medium text-slate-700">${k}</td>
+                    <td class="px-4 py-2 text-right font-bold text-slate-800">${v}</td>
+                    <td class="px-4 py-2 text-right text-xs text-slate-500">${total > 0 ? ((v/total)*100).toFixed(1) : 0}%</td>
+                </tr>
+            `).join('');
+
+            renderCharts(laki, perempuan, ageGroups, sortedEdu, sortedJob);
+        }
+
+        function renderCharts(laki, perempuan, ageGroups, sortedEdu, sortedJob) {
+            Object.values(charts).forEach(c => c.destroy());
+
+            // 1. Gender Doughnut
+            charts.gender = new Chart(document.getElementById('chartGender'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Laki-Laki', 'Perempuan'],
+                    datasets: [{
+                        data: [laki, perempuan],
+                        backgroundColor: ['#4f46e5', '#e11d48'],
+                        borderWidth: 0
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+            });
+
+            // 2. Age Bar
+            charts.age = new Chart(document.getElementById('chartAge'), {
+                type: 'bar',
+                data: {
+                    labels: ageGroups.map(g => g.label.split(' ')[0]),
+                    datasets: [
+                        { label: 'Laki-Laki', data: ageGroups.map(g => g.l), backgroundColor: '#3b82f6', borderRadius: 4 },
+                        { label: 'Perempuan', data: ageGroups.map(g => g.p), backgroundColor: '#f43f5e', borderRadius: 4 }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+            });
+
+            // 3. Education Bar
+            charts.edu = new Chart(document.getElementById('chartEducation'), {
+                type: 'bar',
+                data: {
+                    labels: sortedEdu.map(x => x[0]),
+                    datasets: [{
+                        label: 'Jumlah Jiwa',
+                        data: sortedEdu.map(x => x[1]),
+                        backgroundColor: '#f59e0b',
+                        borderRadius: 6
+                    }]
+                },
+                options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+            });
+
+            // 4. Occupation Bar
+            charts.job = new Chart(document.getElementById('chartOccupation'), {
+                type: 'bar',
+                data: {
+                    labels: sortedJob.map(x => x[0]),
+                    datasets: [{
+                        label: 'Jumlah Jiwa',
+                        data: sortedJob.map(x => x[1]),
+                        backgroundColor: '#8b5cf6',
+                        borderRadius: 6
+                    }]
+                },
+                options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+            });
+        }
+
+        function exportRekapExcel() {
+            const aktif = pendudukList.filter(p => p.status === 'AKTIF');
+            const wb = XLSX.utils.book_new();
+
+            // Sheet 1: Data Penduduk Aktif
+            const wsData = XLSX.utils.json_to_sheet(aktif.map((p, idx) => ({
+                No: idx + 1,
+                No_KK: p.no_kk,
+                NIK: p.nik,
+                Nama_Lengkap: p.nama,
+                Jenis_Kelamin: p.jk,
+                Tempat_Lahir: p.tmp_lahir,
+                Tanggal_Lahir: p.tgl_lahir,
+                Umur: calculateAge(p.tgl_lahir),
+                Agama: p.agama,
+                Pendidikan: p.pendidikan,
+                Pekerjaan: p.pekerjaan,
+                Status_Perkawinan: p.status_kawin,
+                SHDK: p.shdk,
+                Alamat: p.alamat,
+                RT: p.rt,
+                RW: p.rw
+            })));
+            XLSX.utils.book_append_sheet(wb, wsData, 'Penduduk_Aktif');
+
+            // Sheet 2: Rekap Ringkas
+            const rekapRows = [
+                { Kategori: 'Total Penduduk Aktif', Jumlah: aktif.length },
+                { Kategori: 'Total Kepala Keluarga (KK)', Jumlah: new Set(aktif.map(p => p.no_kk)).size },
+                { Kategori: 'Laki-Laki', Jumlah: aktif.filter(p => p.jk === 'LAKI-LAKI').length },
+                { Kategori: 'Perempuan', Jumlah: aktif.filter(p => p.jk === 'PEREMPUAN').length }
+            ];
+            const wsRekap = XLSX.utils.json_to_sheet(rekapRows);
+            XLSX.utils.book_append_sheet(wb, wsRekap, 'Rekapitulasi');
+
+            XLSX.writeFile(wb, `Rekap_Kependudukan_${settings.desa}_${new Date().toISOString().slice(0,10)}.xlsx`);
+            showToast('File Excel Rekapitulasi berhasil diunduh!');
+        }
+
+        // ==================== 2. DATA PENDUDUK CRUD ====================
+        function populateRTRWFilter() {
+            const select = document.getElementById('filter-rtrw');
+            const currentVal = select.value;
+            const rtrwSet = new Set(pendudukList.map(p => `${p.rt}/${p.rw}`));
+            
+            select.innerHTML = '<option value="ALL">Semua RT/RW</option>';
+            Array.from(rtrwSet).sort().forEach(val => {
+                select.innerHTML += `<option value="${val}">RT/RW ${val}</option>`;
+            });
+            if (Array.from(rtrwSet).includes(currentVal)) select.value = currentVal;
+        }
+
+        function renderPendudukTable() {
+            const query = document.getElementById('search-penduduk').value.toLowerCase();
+            const statusFilter = document.getElementById('filter-status').value;
+            const rtrwFilter = document.getElementById('filter-rtrw').value;
+
+            const filtered = pendudukList.filter(p => {
+                const matchQuery = p.nama.toLowerCase().includes(query) || p.nik.includes(query) || p.no_kk.includes(query);
+                const matchStatus = statusFilter === 'ALL' || p.status === statusFilter;
+                const matchRTRW = rtrwFilter === 'ALL' || `${p.rt}/${p.rw}` === rtrwFilter;
+                return matchQuery && matchStatus && matchRTRW;
+            });
+
+            const tbody = document.getElementById('penduduk-table-body');
+            const emptyState = document.getElementById('penduduk-empty-state');
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+            emptyState.classList.add('hidden');
+
+            tbody.innerHTML = filtered.map((p, index) => {
+                const age = calculateAge(p.tgl_lahir);
+                const badgeColor = p.status === 'AKTIF' ? 'bg-emerald-100 text-emerald-700' :
+                                   (p.status === 'PINDAH' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700');
+                return `
+                    <tr class="hover:bg-slate-50 transition">
+                        <td class="px-4 py-3 text-slate-500">${index + 1}</td>
+                        <td class="px-4 py-3">
+                            <div class="font-semibold text-slate-800">${p.nik}</div>
+                            <div class="text-xs text-slate-400">KK: ${p.no_kk}</div>
+                        </td>
+                        <td class="px-4 py-3 font-bold text-slate-800">${p.nama}</td>
+                        <td class="px-4 py-3">
+                            <span class="text-xs font-medium ${p.jk === 'LAKI-LAKI' ? 'text-indigo-600' : 'text-rose-600'}">${p.jk === 'LAKI-LAKI' ? 'L' : 'P'}</span>
+                            <span class="text-xs text-slate-500 ml-1">(${age} Th)</span>
+                        </td>
+                        <td class="px-4 py-3 text-xs text-slate-600">${p.shdk}</td>
+                        <td class="px-4 py-3 text-xs text-slate-600">RT ${p.rt} / RW ${p.rw}</td>
+                        <td class="px-4 py-3">
+                            <span class="px-2.5 py-1 rounded-full text-[11px] font-semibold ${badgeColor}">${p.status}</span>
+                        </td>
+                        <td class="px-4 py-3 text-center">
+                            <div class="flex items-center justify-center gap-1.5">
+                                <button onclick="openEditPendudukModal('${p.id}')" title="Detail & Edit Biodata" class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition">
+                                    <i class="fa-solid fa-eye"></i>
+                                </button>
+                                <button onclick="cetakKKByNo('${p.no_kk}')" title="Lihat Kartu Keluarga" class="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition">
+                                    <i class="fa-solid fa-address-card"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function openAddPendudukModal() {
+            document.getElementById('modal-penduduk-title').textContent = 'Tambah Penduduk Baru';
+            document.getElementById('form-penduduk').reset();
+            document.getElementById('pen-edit-id').value = '';
+            openModal('modal-penduduk');
+        }
+
+        function openEditPendudukModal(id) {
+            const p = pendudukList.find(item => item.id === id);
+            if (!p) return;
+
+            document.getElementById('modal-penduduk-title').textContent = 'Detail & Edit Biodata Penduduk';
+            document.getElementById('pen-edit-id').value = p.id;
+            document.getElementById('pen-nokk').value = p.no_kk;
+            document.getElementById('pen-nik').value = p.nik;
+            document.getElementById('pen-nama').value = p.nama;
+            document.getElementById('pen-jk').value = p.jk;
+            document.getElementById('pen-goldar').value = p.goldar || 'TIDAK TAHU';
+            document.getElementById('pen-tmplahir').value = p.tmp_lahir;
+            document.getElementById('pen-tgllahir').value = p.tgl_lahir;
+            document.getElementById('pen-agama').value = p.agama || 'ISLAM';
+            document.getElementById('pen-pendidikan').value = p.pendidikan || 'TIDAK/BLM SEKOLAH';
+            document.getElementById('pen-pekerjaan').value = p.pekerjaan || 'BELUM/TIDAK BEKERJA';
+            document.getElementById('pen-kawin').value = p.status_kawin || 'BELUM KAWIN';
+            document.getElementById('pen-tglkawin').value = p.tgl_kawin || '';
+            document.getElementById('pen-shdk').value = p.shdk || 'ANAK';
+            document.getElementById('pen-ayah').value = p.ayah || '-';
+            document.getElementById('pen-ibu').value = p.ibu || '-';
+            document.getElementById('pen-alamat').value = p.alamat || '';
+            document.getElementById('pen-rt').value = p.rt || '001';
+            document.getElementById('pen-rw').value = p.rw || '001';
+
+            openModal('modal-penduduk');
+        }
+
+        function savePenduduk(e) {
+            e.preventDefault();
+            const editId = document.getElementById('pen-edit-id').value;
+            const nikVal = document.getElementById('pen-nik').value.trim();
+
+            const dataObj = {
+                id: editId || 'p_' + Date.now(),
+                no_kk: document.getElementById('pen-nokk').value.trim(),
+                nik: nikVal,
+                nama: document.getElementById('pen-nama').value.trim().toUpperCase(),
+                jk: document.getElementById('pen-jk').value,
+                goldar: document.getElementById('pen-goldar').value,
+                tmp_lahir: document.getElementById('pen-tmplahir').value.trim().toUpperCase(),
+                tgl_lahir: document.getElementById('pen-tgllahir').value,
+                agama: document.getElementById('pen-agama').value,
+                pendidikan: document.getElementById('pen-pendidikan').value,
+                pekerjaan: document.getElementById('pen-pekerjaan').value.trim().toUpperCase(),
+                status_kawin: document.getElementById('pen-kawin').value,
+                tgl_kawin: document.getElementById('pen-tglkawin').value,
+                shdk: document.getElementById('pen-shdk').value,
+                wni: 'WNI',
+                paspor: '-',
+                kitap: '-',
+                ayah: document.getElementById('pen-ayah').value.trim().toUpperCase() || '-',
+                ibu: document.getElementById('pen-ibu').value.trim().toUpperCase() || '-',
+                alamat: document.getElementById('pen-alamat').value.trim().toUpperCase(),
+                rt: document.getElementById('pen-rt').value.trim().padStart(3, '0'),
+                rw: document.getElementById('pen-rw').value.trim().padStart(3, '0'),
+                kode_pos: settings.kodepos,
+                status: 'AKTIF'
+            };
+
+            if (editId) {
+                const idx = pendudukList.findIndex(item => item.id === editId);
+                if (idx !== -1) {
+                    dataObj.status = pendudukList[idx].status;
+                    pendudukList[idx] = dataObj;
+                }
+                showToast('Biodata penduduk berhasil diperbarui!');
+            } else {
+                if (pendudukList.some(item => item.nik === nikVal)) {
+                    showToast('NIK sudah terdaftar di sistem!', 'error');
+                    return;
+                }
+                pendudukList.push(dataObj);
+                showToast('Penduduk baru berhasil ditambahkan!');
+            }
+
+            saveToStorage();
+            closeModal('modal-penduduk');
+            refreshAllViews();
+        }
+
+        // ==================== 3. MUTASI PENDUDUK ====================
+        function openMutasiModal(type) {
+            document.getElementById('mutasi-type').value = type;
+            document.getElementById('form-mutasi').reset();
+
+            const lahirFields = document.getElementById('mutasi-fields-lahir');
+            const existingFields = document.getElementById('mutasi-fields-existing');
+
+            if (type === 'LAHIR') {
+                document.getElementById('modal-mutasi-title').textContent = 'Pencatatan Kelahiran Baru';
+                lahirFields.classList.remove('hidden');
+                existingFields.classList.add('hidden');
+
+                // Populate KK aktif
+                const kkSelect = document.getElementById('lahir-nokk');
+                const kkGroups = getActiveKKList();
+                kkSelect.innerHTML = kkGroups.map(k => `<option value="${k.no_kk}">${k.no_kk} - ${k.kepala}</option>`).join('');
+                document.getElementById('lahir-tgllahir').valueAsDate = new Date();
+            } else {
+                lahirFields.classList.add('hidden');
+                existingFields.classList.remove('hidden');
+
+                const penSelect = document.getElementById('mutasi-penduduk-nik');
+                const aktif = pendudukList.filter(p => p.status === 'AKTIF');
+                penSelect.innerHTML = aktif.map(p => `<option value="${p.nik}">${p.nik} - ${p.nama} (KK: ${p.no_kk})</option>`).join('');
+                document.getElementById('mutasi-tanggal').valueAsDate = new Date();
+
+                if (type === 'PINDAH') {
+                    document.getElementById('modal-mutasi-title').textContent = 'Pencatatan Pindah Keluar Desa';
+                    document.getElementById('mutasi-date-label').textContent = 'Tanggal Pindah *';
+                    document.getElementById('mutasi-note-label').textContent = 'Alamat Tujuan Pindah & Alasan *';
+                } else {
+                    document.getElementById('modal-mutasi-title').textContent = 'Pencatatan Kematian Warga';
+                    document.getElementById('mutasi-date-label').textContent = 'Tanggal Meninggal Dunia *';
+                    document.getElementById('mutasi-note-label').textContent = 'Tempat & Sebab Kematian *';
+                }
+            }
+
+            openModal('modal-mutasi');
+        }
+
+        function submitMutasi(e) {
+            e.preventDefault();
+            const type = document.getElementById('mutasi-type').value;
+
+            if (type === 'LAHIR') {
+                const nokk = document.getElementById('lahir-nokk').value;
+                const nik = document.getElementById('lahir-nik').value.trim();
+                const nama = document.getElementById('lahir-nama').value.trim().toUpperCase();
+                const jk = document.getElementById('lahir-jk').value;
+                const goldar = document.getElementById('lahir-goldar').value;
+                const tmpLahir = document.getElementById('lahir-tmplahir').value.trim().toUpperCase();
+                const tglLahir = document.getElementById('lahir-tgllahir').value;
+
+                if (!nik || !nama || !tmpLahir || !tglLahir) {
+                    showToast('Lengkapi semua kolom wajib!', 'error');
+                    return;
+                }
+
+                // Cari data orang tua di KK tersebut
+                const anggotaKK = pendudukList.filter(p => p.no_kk === nokk && p.status === 'AKTIF');
+                const ayahObj = anggotaKK.find(p => p.shdk === 'KEPALA KELUARGA' && p.jk === 'LAKI-LAKI') || anggotaKK[0];
+                const ibuObj = anggotaKK.find(p => p.shdk === 'ISTRI') || anggotaKK.find(p => p.jk === 'PEREMPUAN');
+
+                const bayiObj = {
+                    id: 'p_' + Date.now(),
+                    no_kk: nokk,
+                    nik: nik,
+                    nama: nama,
+                    jk: jk,
+                    tmp_lahir: tmpLahir,
+                    tgl_lahir: tglLahir,
+                    agama: ayahObj ? ayahObj.agama : 'ISLAM',
+                    pendidikan: 'TIDAK/BLM SEKOLAH',
+                    pekerjaan: 'BELUM/TIDAK BEKERJA',
+                    goldar: goldar,
+                    status_kawin: 'BELUM KAWIN',
+                    tgl_kawin: '',
+                    shdk: 'ANAK',
+                    wni: 'WNI',
+                    paspor: '-',
+                    kitap: '-',
+                    ayah: ayahObj ? ayahObj.nama : '-',
+                    ibu: ibuObj ? ibuObj.nama : '-',
+                    alamat: ayahObj ? ayahObj.alamat : '',
+                    rt: ayahObj ? ayahObj.rt : '001',
+                    rw: ayahObj ? ayahObj.rw : '001',
+                    kode_pos: settings.kodepos,
+                    status: 'AKTIF'
+                };
+
+                pendudukList.push(bayiObj);
+                mutasiList.unshift({
+                    id: 'm_' + Date.now(),
+                    tanggal: tglLahir,
+                    jenis: 'LAHIR',
+                    nik: nik,
+                    nama: nama,
+                    no_kk: nokk,
+                    keterangan: `Kelahiran baru di ${tmpLahir}, masuk ke KK ${nokk}`
+                });
+                showToast('Data kelahiran berhasil dicatat & masuk ke KK!');
+            } else {
+                const nik = document.getElementById('mutasi-penduduk-nik').value;
+                const tanggal = document.getElementById('mutasi-tanggal').value;
+                const keterangan = document.getElementById('mutasi-keterangan').value.trim();
+
+                if (!nik || !tanggal || !keterangan) {
+                    showToast('Lengkapi semua kolom wajib!', 'error');
+                    return;
+                }
+
+                const person = pendudukList.find(p => p.nik === nik);
+                if (person) {
+                    person.status = type; // 'PINDAH' atau 'MENINGGAL'
+                    mutasiList.unshift({
+                        id: 'm_' + Date.now(),
+                        tanggal: tanggal,
+                        jenis: type,
+                        nik: person.nik,
+                        nama: person.nama,
+                        no_kk: person.no_kk,
+                        keterangan: keterangan
+                    });
+                    showToast(`Status penduduk berhasil diubah menjadi ${type}.`);
+                }
+            }
+
+            saveToStorage();
+            closeModal('modal-mutasi');
+            refreshAllViews();
+        }
+
+        function renderMutasiLog() {
+            const tbody = document.getElementById('mutasi-log-body');
+            if (mutasiList.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400">Belum ada riwayat mutasi tercatat.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = mutasiList.map(m => {
+                const badge = m.jenis === 'LAHIR' ? 'bg-emerald-100 text-emerald-700' :
+                              (m.jenis === 'PINDAH' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700');
+                return `
+                    <tr class="hover:bg-slate-50">
+                        <td class="px-4 py-3 font-medium text-slate-700">${formatDateDDMMYYYY(m.tanggal)}</td>
+                        <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold ${badge}">${m.jenis}</span></td>
+                        <td class="px-4 py-3">
+                            <div class="font-bold text-slate-800">${m.nama}</div>
+                            <div class="text-xs text-slate-400">NIK: ${m.nik}</div>
+                        </td>
+                        <td class="px-4 py-3 text-xs text-slate-600">${m.no_kk}</td>
+                        <td class="px-4 py-3 text-xs text-slate-600">${m.keterangan}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // ==================== 4. CETAK KARTU KELUARGA (KK) ====================
+        function getActiveKKList() {
+            const aktif = pendudukList.filter(p => p.status === 'AKTIF');
+            const map = new Map();
+            aktif.forEach(p => {
+                if (!map.has(p.no_kk)) {
+                    map.set(p.no_kk, { no_kk: p.no_kk, kepala: p.nama, members: [] });
+                }
+                const group = map.get(p.no_kk);
+                group.members.push(p);
+                if (p.shdk === 'KEPALA KELUARGA') {
+                    group.kepala = p.nama;
+                }
+            });
+            return Array.from(map.values());
+        }
+
+        function populateKKSelector() {
+            const select = document.getElementById('select-kk-cetak');
+            const currentVal = select.value;
+            const kkList = getActiveKKList();
+
+            select.innerHTML = kkList.map(k => `<option value="${k.no_kk}">No. KK ${k.no_kk} — ${k.kepala} (${k.members.length} Jiwa)</option>`).join('');
+            if (kkList.some(k => k.no_kk === currentVal)) {
+                select.value = currentVal;
+            }
+        }
+
+        function cetakKKByNo(nokk) {
+            switchTab('cetak-kk');
+            const select = document.getElementById('select-kk-cetak');
+            select.value = nokk;
+            renderKKDocument();
+        }
+
+        function renderKKDocument() {
+            const select = document.getElementById('select-kk-cetak');
+            const nokk = select.value;
+            const members = pendudukList.filter(p => p.no_kk === nokk && p.status === 'AKTIF');
+
+            // Urutkan berdasarkan SHDK (Kepala Keluarga -> Istri -> Anak -> Lainnya)
+            const orderSHDK = { 'KEPALA KELUARGA': 1, 'ISTRI': 2, 'ANAK': 3, 'ORANG TUA': 4, 'MERTUA': 5, 'FAMILI LAIN': 6 };
+            members.sort((a, b) => (orderSHDK[a.shdk] || 99) - (orderSHDK[b.shdk] || 99));
+
+            const kepala = members.find(m => m.shdk === 'KEPALA KELUARGA') || members[0] || {};
+
+            // Header & Metadata
+            document.getElementById('kk-doc-nokk').textContent = nokk || '-';
+            document.getElementById('kk-doc-kepala').textContent = kepala.nama || '-';
+            document.getElementById('kk-doc-alamat').textContent = kepala.alamat || '-';
+            document.getElementById('kk-doc-rtrw').textContent = kepala.rt ? `${kepala.rt}/${kepala.rw}` : '-';
+            document.getElementById('kk-doc-kodepos').textContent = kepala.kode_pos || settings.kodepos;
+
+            document.getElementById('kk-doc-desa').textContent = settings.desa;
+            document.getElementById('kk-doc-kecamatan').textContent = settings.kecamatan;
+            document.getElementById('kk-doc-kabupaten').textContent = settings.kabupaten;
+            document.getElementById('kk-doc-provinsi').textContent = settings.provinsi;
+
+            // Tanda Tangan Bawah
+            const todayStr = formatDateDDMMYYYY(new Date().toISOString().slice(0, 10));
+            document.getElementById('kk-doc-tgl-keluar').textContent = todayStr;
+            document.getElementById('kk-ttd-kepala').textContent = kepala.nama || '-';
+            document.getElementById('kk-jabatan-kades').textContent = `KEPALA DESA ${settings.desa}`;
+            document.getElementById('kk-ttd-kades').textContent = settings.kadesNama;
+            document.getElementById('kk-nip-kades').textContent = settings.kadesNip || '';
+
+            // Render 10 Baris Tetap Tabel Atas & Bawah
+            let topRowsHTML = '';
+            let bottomRowsHTML = '';
+
+            for (let i = 0; i < 10; i++) {
+                const m = members[i];
+                const no = i + 1;
+                if (m) {
+                    topRowsHTML += `
+                        <tr>
+                            <td class="text-center">${no}</td>
+                            <td>${m.nama}</td>
+                            <td class="text-center">${m.nik}</td>
+                            <td class="text-center">${m.jk}</td>
+                            <td>${m.tmp_lahir}</td>
+                            <td class="text-center">${formatDateDDMMYYYY(m.tgl_lahir)}</td>
+                            <td class="text-center">${m.agama}</td>
+                            <td>${m.pendidikan}</td>
+                            <td>${m.pekerjaan}</td>
+                            <td class="text-center">${m.goldar || 'TIDAK TAHU'}</td>
+                        </tr>
+                    `;
+                    bottomRowsHTML += `
+                        <tr>
+                            <td class="text-center">${no}</td>
+                            <td>${m.status_kawin}</td>
+                            <td class="text-center">${m.tgl_kawin ? formatDateDDMMYYYY(m.tgl_kawin) : '-'}</td>
+                            <td>${m.shdk}</td>
+                            <td class="text-center">${m.wni || 'WNI'}</td>
+                            <td class="text-center">${m.paspor || '-'}</td>
+                            <td class="text-center">${m.kitap || '-'}</td>
+                            <td>${m.ayah || '-'}</td>
+                            <td>${m.ibu || '-'}</td>
+                        </tr>
+                    `;
+                } else {
+                    topRowsHTML += `
+                        <tr>
+                            <td class="text-center">${no}</td>
+                            <td>-</td>
+                            <td class="text-center">-</td>
+                            <td class="text-center">-</td>
+                            <td>-</td>
+                            <td class="text-center">-</td>
+                            <td class="text-center">-</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td class="text-center">-</td>
+                        </tr>
+                    `;
+                    bottomRowsHTML += `
+                        <tr>
+                            <td class="text-center">${no}</td>
+                            <td>-</td>
+                            <td class="text-center">-</td>
+                            <td>-</td>
+                            <td class="text-center">-</td>
+                            <td class="text-center">-</td>
+                            <td class="text-center">-</td>
+                            <td>-</td>
+                            <td>-</td>
+                        </tr>
+                    `;
+                }
+            }
+
+            document.getElementById('kk-table-top-body').innerHTML = topRowsHTML;
+            document.getElementById('kk-table-bottom-body').innerHTML = bottomRowsHTML;
+        }
+
+        // ==================== 5. IMPORT DATA SIAK EXCEL ====================
+        function downloadTemplateSIAK() {
+            const sampleRows = [
+                {
+                    No_KK: '1509019999990001',
+                    NIK: '1509011111110001',
+                    Nama_Lengkap: 'AHMAD SUPRIADI',
+                    Jenis_Kelamin: 'LAKI-LAKI',
+                    Tempat_Lahir: 'JAMBI',
+                    Tanggal_Lahir: '1988-04-20',
+                    Agama: 'ISLAM',
+                    Pendidikan: 'SLTA/SEDERAJAT',
+                    Pekerjaan: 'WIRASWASTA',
+                    Golongan_Darah: 'O',
+                    Status_Perkawinan: 'KAWIN TERCATAT',
+                    Tanggal_Perkawinan: '2015-02-14',
+                    Status_Hubungan_Keluarga: 'KEPALA KELUARGA',
+                    Kewarganegaraan: 'WNI',
+                    No_Paspor: '-',
+                    No_KITAP: '-',
+                    Nama_Ayah: 'SULAIMAN',
+                    Nama_Ibu: 'FATIMAH',
+                    Alamat: 'JL. MERDEKA NO. 10',
+                    RT: '001',
+                    RW: '002',
+                    Kode_Pos: settings.kodepos
+                }
+            ];
+            const ws = XLSX.utils.json_to_sheet(sampleRows);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Data_SIAK');
+            XLSX.writeFile(wb, 'Template_Import_SIAK_Desa.xlsx');
+            showToast('Template Excel SIAK berhasil diunduh!');
+        }
+
+        function handleExcelImport(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const mode = document.querySelector('input[name="import-mode"]:checked').value;
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+
+                    if (rows.length === 0) {
+                        showToast('File Excel kosong atau format tidak terbaca!', 'error');
+                        return;
+                    }
+
+                    const importedItems = rows.map((r, i) => ({
+                        id: 'imp_' + Date.now() + '_' + i,
+                        no_kk: String(r.No_KK || r.NO_KK || '').trim(),
+                        nik: String(r.NIK || '').trim(),
+                        nama: String(r.Nama_Lengkap || r.NAMA_LENGKAP || r.Nama || '').trim().toUpperCase(),
+                        jk: String(r.Jenis_Kelamin || r.JENIS_KELAMIN || 'LAKI-LAKI').trim().toUpperCase(),
+                        tmp_lahir: String(r.Tempat_Lahir || r.TEMPAT_LAHIR || '-').trim().toUpperCase(),
+                        tgl_lahir: String(r.Tanggal_Lahir || r.TANGGAL_LAHIR || '1990-01-01').trim(),
+                        agama: String(r.Agama || r.AGAMA || 'ISLAM').trim().toUpperCase(),
+                        pendidikan: String(r.Pendidikan || r.PENDIDIKAN || 'TIDAK/BLM SEKOLAH').trim().toUpperCase(),
+                        pekerjaan: String(r.Pekerjaan || r.PEKERJAAN || 'BELUM/TIDAK BEKERJA').trim().toUpperCase(),
+                        goldar: String(r.Golongan_Darah || r.GOLONGAN_DARAH || 'TIDAK TAHU').trim().toUpperCase(),
+                        status_kawin: String(r.Status_Perkawinan || r.STATUS_PERKAWINAN || 'BELUM KAWIN').trim().toUpperCase(),
+                        tgl_kawin: String(r.Tanggal_Perkawinan || r.TANGGAL_PERKAWINAN || '').trim(),
+                        shdk: String(r.Status_Hubungan_Keluarga || r.SHDK || 'ANAK').trim().toUpperCase(),
+                        wni: String(r.Kewarganegaraan || 'WNI').trim().toUpperCase(),
+                        paspor: String(r.No_Paspor || '-').trim(),
+                        kitap: String(r.No_KITAP || '-').trim(),
+                        ayah: String(r.Nama_Ayah || r.NAMA_AYAH || '-').trim().toUpperCase(),
+                        ibu: String(r.Nama_Ibu || r.NAMA_IBU || '-').trim().toUpperCase(),
+                        alamat: String(r.Alamat || r.ALAMAT || '').trim().toUpperCase(),
+                        rt: String(r.RT || '001').trim().padStart(3, '0'),
+                        rw: String(r.RW || '001').trim().padStart(3, '0'),
+                        kode_pos: String(r.Kode_Pos || settings.kodepos).trim(),
+                        status: 'AKTIF'
+                    })).filter(item => item.nik && item.nama);
+
+                    if (mode === 'replace') {
+                        pendudukList = importedItems;
+                    } else {
+                        importedItems.forEach(newItem => {
+                            const existingIdx = pendudukList.findIndex(p => p.nik === newItem.nik);
+                            if (existingIdx !== -1) {
+                                pendudukList[existingIdx] = { ...pendudukList[existingIdx], ...newItem };
+                            } else {
+                                pendudukList.push(newItem);
+                            }
+                        });
+                    }
+
+                    saveToStorage();
+                    refreshAllViews();
+                    showToast(`Berhasil mengimpor ${importedItems.length} data penduduk dari SIAK Excel!`);
+                    event.target.value = '';
+                    switchTab('penduduk');
+                } catch (err) {
+                    console.error(err);
+                    showToast('Gagal memproses file Excel. Pastikan format kolom sesuai template.', 'error');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // ==================== 6. PENGATURAN DESA & LOGO KK ====================
+        function applySettingsToUI() {
+            document.getElementById('sidebar-desa-name').textContent = 'Desa ' + settings.desa;
+            document.getElementById('set-desa').value = settings.desa;
+            document.getElementById('set-kecamatan').value = settings.kecamatan;
+            document.getElementById('set-kabupaten').value = settings.kabupaten;
+            document.getElementById('set-provinsi').value = settings.provinsi;
+            document.getElementById('set-kodepos').value = settings.kodepos;
+            document.getElementById('set-logo-subtext').value = settings.logoSubtext || 'REPUBLIK INDONESIA';
+            document.getElementById('set-kades-nama').value = settings.kadesNama;
+            document.getElementById('set-kades-nip').value = settings.kadesNip;
+
+            document.getElementById('kk-header-subtext').textContent = settings.logoSubtext || 'REPUBLIK INDONESIA';
+
+            const previewImg = document.getElementById('preview-logo-setting');
+            const defaultBox = document.getElementById('default-logo-setting');
+            const kkLogoContainer = document.getElementById('kk-logo-container');
+
+            if (settings.logoBase64) {
+                previewImg.src = settings.logoBase64;
+                previewImg.classList.remove('hidden');
+                defaultBox.classList.add('hidden');
+                kkLogoContainer.innerHTML = `<img src="${settings.logoBase64}" alt="Logo KK" class="max-h-14 max-w-14 object-contain">`;
+            } else {
+                previewImg.classList.add('hidden');
+                defaultBox.classList.remove('hidden');
+                kkLogoContainer.innerHTML = `
+                    <svg viewBox="0 0 100 100" class="w-14 h-14 text-black fill-current">
+                        <path d="M50 5 C35 15, 20 20, 10 35 C20 40, 25 45, 20 60 C30 58, 35 65, 35 80 L50 92 L65 80 C65 65, 70 58, 80 60 C75 45, 80 40, 90 35 C80 20, 65 15, 50 5 Z M50 25 L62 35 L58 55 L50 62 L42 55 L38 35 Z"/>
+                        <circle cx="50" cy="43" r="6" fill="white"/>
+                    </svg>
+                `;
+            }
+        }
+
+        function handleLogoUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (file.size > 2 * 1024 * 1024) {
+                showToast('Ukuran gambar maksimal 2MB!', 'error');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                settings.logoBase64 = e.target.result;
+                saveToStorage();
+                applySettingsToUI();
+                renderKKDocument();
+                showToast('Logo Kartu Keluarga berhasil diperbarui!');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function resetLogoDefault() {
+            settings.logoBase64 = '';
+            saveToStorage();
+            applySettingsToUI();
+            renderKKDocument();
+            showToast('Logo dikembalikan ke lambang bawaan.');
+        }
+
+        function saveSettings(e) {
+            e.preventDefault();
+            settings.desa = document.getElementById('set-desa').value.trim().toUpperCase();
+            settings.kecamatan = document.getElementById('set-kecamatan').value.trim().toUpperCase();
+            settings.kabupaten = document.getElementById('set-kabupaten').value.trim().toUpperCase();
+            settings.provinsi = document.getElementById('set-provinsi').value.trim().toUpperCase();
+            settings.kodepos = document.getElementById('set-kodepos').value.trim();
+            settings.logoSubtext = document.getElementById('set-logo-subtext').value.trim().toUpperCase();
+            settings.kadesNama = document.getElementById('set-kades-nama').value.trim().toUpperCase();
+            settings.kadesNip = document.getElementById('set-kades-nip').value.trim();
+
+            saveToStorage();
+            applySettingsToUI();
+            renderKKDocument();
+            showToast('Pengaturan Desa & Penandatangan KK berhasil disimpan!');
+        }
+
+        function openResetConfirm() {
+            openModal('modal-reset');
+        }
+
+        function executeResetData() {
+            localStorage.removeItem(STORAGE_KEY_PENDUDUK);
+            localStorage.removeItem(STORAGE_KEY_MUTASI);
+            localStorage.removeItem(STORAGE_KEY_SETTINGS);
+            loadFromStorage();
+            applySettingsToUI();
+            refreshAllViews();
+            closeModal('modal-reset');
+            showToast('Seluruh data telah direset ke pengaturan awal.');
+        }
+const CLOUD_API_URL = 'https://script.google.com/macros/s/AKfycbzda_Qu8HuprCIcjvpfCUXZI7Is_yryNDyzUGHf0tQqFdnTcBSrU_OKIaOte9iirooJ/exec'; //
+
+async function loadFromCloud() {
+  if (!CLOUD_API_URL || CLOUD_API_URL.includes('MASUKKAN_')) return null;
+  const res = await fetch(`${CLOUD_API_URL}?action=getAll`, { method: 'GET' });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.message || 'Gagal memuat data dari cloud');
+  return data;
+}
+
+async function syncToCloud(payload) {
+  if (!CLOUD_API_URL || CLOUD_API_URL.includes('MASUKKAN_')) return null;
+  // Menggunakan text/plain membantu menghindari preflight CORS pada Google Apps Script Web App
+  const res = await fetch(CLOUD_API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.message || 'Gagal menyimpan data ke cloud');
+  return data;
+}
+    </script>
+</body>
+</html>
