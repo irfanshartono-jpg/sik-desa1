@@ -2199,28 +2199,90 @@
             closeModal('modal-reset');
             showToast('Seluruh data telah direset ke pengaturan awal.');
         }
-const CLOUD_API_URL = 'https://script.google.com/macros/s/AKfycbzda_Qu8HuprCIcjvpfCUXZI7Is_yryNDyzUGHf0tQqFdnTcBSrU_OKIaOte9iirooJ/exec'; //
+const CLOUD_API_URL = 'https://script.google.com/macros/s/AKfycbzda_Qu8HuprCIcjvpfCUXZI7Is_yryNDyzUGHf0tQqFdnTcBSrU_OKIaOte9iirooJ/exec';
 
-async function loadFromCloud() {
-  if (!CLOUD_API_URL || CLOUD_API_URL.includes('MASUKKAN_')) return null;
-  const res = await fetch(`${CLOUD_API_URL}?action=getAll`, { method: 'GET' });
-  const data = await res.json();
-  if (!data.ok) throw new Error(data.message || 'Gagal memuat data dari cloud');
-  return data;
+let isSyncing = false;
+
+function loadFromStorage() {
+    const rawPen = localStorage.getItem(STORAGE_KEY_PENDUDUK);
+    const rawMut = localStorage.getItem(STORAGE_KEY_MUTASI);
+    const rawSet = localStorage.getItem(STORAGE_KEY_SETTINGS);
+
+    pendudukList = rawPen ? JSON.parse(rawPen) : JSON.parse(JSON.stringify(DEFAULT_PENDUDUK));
+    mutasiList = rawMut ? JSON.parse(rawMut) : JSON.parse(JSON.stringify(DEFAULT_MUTASI));
+    settings = rawSet ? { ...DEFAULT_SETTINGS, ...JSON.parse(rawSet) } : { ...DEFAULT_SETTINGS };
+
+    if (!rawPen) {
+        localStorage.setItem(STORAGE_KEY_PENDUDUK, JSON.stringify(pendudukList));
+        localStorage.setItem(STORAGE_KEY_MUTASI, JSON.stringify(mutasiList));
+        localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+    }
 }
 
-async function syncToCloud(payload) {
-  if (!CLOUD_API_URL || CLOUD_API_URL.includes('MASUKKAN_')) return null;
-  // Menggunakan text/plain membantu menghindari preflight CORS pada Google Apps Script Web App
-  const res = await fetch(CLOUD_API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(payload)
-  });
-  const data = await res.json();
-  if (!data.ok) throw new Error(data.message || 'Gagal menyimpan data ke cloud');
-  return data;
+function saveToStorage(syncCloud = true) {
+    // 1. Tetap simpan ke localStorage agar tampilan lokal cepat & aman
+    localStorage.setItem(STORAGE_KEY_PENDUDUK, JSON.stringify(pendudukList));
+    localStorage.setItem(STORAGE_KEY_MUTASI, JSON.stringify(mutasiList));
+    localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+
+    // 2. Kirim ke Google Spreadsheet lewat Apps Script
+    if (syncCloud && CLOUD_API_URL && !CLOUD_API_URL.includes('MASUKKAN_')) {
+        syncToCloud();
+    }
 }
-    </script>
+
+async function syncToCloud() {
+    if (isSyncing) return;
+    isSyncing = true;
+    try {
+        const res = await fetch(CLOUD_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+                action: 'syncAll',
+                penduduk: pendudukList,
+                mutasi: mutasiList,
+                pengaturan: settings
+            })
+        });
+        const result = await res.json();
+        if (!result.ok) {
+            console.error('Gagal sync ke Spreadsheet:', result.message);
+        } else {
+            console.log('Berhasil sync ke Spreadsheet:', result.message);
+        }
+    } catch (err) {
+        console.error('Error jaringan saat sync ke Spreadsheet:', err);
+    } finally {
+        isSyncing = false;
+    }
+}
+
+async function pullFromCloudAndRender() {
+    if (!CLOUD_API_URL || CLOUD_API_URL.includes('MASUKKAN_')) return;
+    try {
+        const res = await fetch(`${CLOUD_API_URL}?action=getAll`, { method: 'GET' });
+        const data = await res.json();
+        if (!data.ok) return;
+
+        if (Array.isArray(data.penduduk) && data.penduduk.length > 0) {
+            pendudukList = data.penduduk;
+        }
+        if (Array.isArray(data.mutasi)) {
+            mutasiList = data.mutasi;
+        }
+        if (data.pengaturan && typeof data.pengaturan === 'object') {
+            settings = { ...DEFAULT_SETTINGS, ...data.pengaturan };
+        }
+
+        // Simpan ke localStorage tanpa memicu POST balik ke cloud
+        saveToStorage(false);
+
+        // Panggil fungsi render/refresh tampilan Anda di sini (sesuaikan nama fungsinya)
+        if (typeof renderAll === 'function') renderAll();
+    } catch (err) {
+        console.error('Error ambil data dari Spreadsheet:', err);
+    }
+}    </script>
 </body>
 </html>
